@@ -1,0 +1,330 @@
+---
+title: "Untitled"
+author: "Swati Sharma"
+date: "05/04/2022"
+output: html_document
+---
+
+Business Problem :
+
+In order to effectively produce quality decisions in the modern credit card industry, knowledge must be gained through effective data analysis and modeling. Through the use of dynamic data driven decision making tools and procedures, information can be gathered to successfully evaluate all aspects of credit card operations. 
+
+PSPD Bank has banking operations in more than 50 countries across the globe.
+Mr. Jim Watson, CEO, wants to evaluate areas of bankruptcy, fraud and collections, respond to customer requests for help with proactive offers and service. 
+
+Available Data : 
+
+
+```{r}
+customer_Acq <- read.csv("C:/Users/sharm/OneDrive/Desktop/Cred.it Card//Customer Acqusition.csv")
+Repayment <- read.csv("C:/Users/sharm/OneDrive/Desktop/Credit Card/Repayment.csv")
+Transactions <- read.csv("C:/Users/sharm/OneDrive/Desktop/Credit Card/Spend.csv")
+
+```
+
+```{r}
+
+sapply(customer_Acq, class)
+customer_Acq$No = NULL
+sum(is.na(customer_Acq))
+customer_Acq$Age <- as.integer(customer_Acq$Age)
+class(customer_Acq$Age)
+customer_Acq$Age
+
+```
+```{r}
+
+sapply(Repayment, class)
+Repayment$SL.No.= NULL
+sum(is.na(Repayment))
+sum(is.na(Repayment$Customer))
+sum(is.na(Repayment$Month))
+sum(is.na(Repayment$Amount))
+sum(is.na(Repayment$X))
+
+# I've found all rows in column X was NA hence, removed the column from data-set.
+Repayment$X <- NULL
+Repayment
+Repayment$Month <- as.Date(Repayment$Month, "%d-%b-%y")
+class(Repayment$Month)
+
+
+```
+```{r}
+
+sapply(Transactions, class)
+Transactions$Sl.No. <- NULL
+Transactions$Month <- as.Date(Transactions$Month, "%d-%b-%y")
+class(Transactions$Month)
+sum(is.na(Transactions))
+
+```
+Following are some of Watson's questions to a consultant to understand the customers spend & repayment behavior. 
+
+In order to work further first, I'm going to merge the data-sets
+
+```{r}
+
+require(dplyr)
+
+cust_data <- dplyr::inner_join(x= customer_Acq, y= Repayment, by = c("Customer"= "Customer"))
+cust_creditCard_data <- dplyr::inner_join(x= cust_data, y= Transactions, by = c("Customer"= "Customer"))
+
+
+
+cust_creditCard_data <- dplyr::rename(cust_creditCard_data, "Repayment_month" = "Month.x",
+                                      "Transaction_month"= "Month.y", "Repayment_amount" = "Amount.x", "Transaction_amount"= "Amount.y")
+
+
+sum(duplicated(cust_creditCard_data))
+sum(is.na(cust_creditCard_data))
+
+sapply(cust_creditCard_data, class)
+
+```
+1. In the above Dataset, 
+
+a. In-case age is less than 18, replace it with mean of age values. 
+
+```{r}
+min(cust_creditCard_data$Age)
+mean_Of_age <- round(mean(cust_creditCard_data$Age),2)
+mean_Of_age
+cust_creditCard_data$Age <- ifelse(cust_creditCard_data$Age < 18,"mean_Of_age", cust_creditCard_data$Age)
+
+```
+b. In-case spend amount is more than the limit, replace it with 50% of that customer's limit. (Customer's limit provided in acquisition is the per  transaction limit on his card)
+
+```{r}
+cust_creditCard_data$Half_Of_limit <- cust_creditCard_data$Limit/2
+
+cust_creditCard_data$Transaction_amount <- ifelse(cust_creditCard_data$Transaction_amount > cust_creditCard_data$Limit, cust_creditCard_data$Half_Of_limit,cust_creditCard_data$Transaction_amount )
+
+
+```
+
+c. In-case the repayment amount is more than the limit, replace the repayment with the the limit. 
+
+
+```{r}
+cust_creditCard_data$Repayment_amount <- ifelse(cust_creditCard_data$Repayment_amount >cust_creditCard_data$Limit, cust_creditCard_data$Limit, cust_creditCard_data$Repayment_amount)
+```
+
+2. From the above data-set create the following summaries:
+
+a. How many distinct customers exist?
+
+```{r}
+length(unique(cust_creditCard_data$Customer))
+
+```
+
+b. How many distinct categories exist?
+
+```{r}
+
+unique(cust_creditCard_data$Segment)
+
+```
+
+
+
+c. What is the average monthly spend by customers?
+
+```{r}
+library(dplyr)
+library(lubridate)
+
+cust_creditCard_data[, "trans_year"] <- format(cust_creditCard_data[,"Transaction_month"], "%Y")
+cust_creditCard_data[, "Repay_year"] <- format(cust_creditCard_data[,"Repayment_month"], "%Y")
+
+cust_creditCard_data[, "trans_month"] <- format(cust_creditCard_data[,"Transaction_month"], "%B")
+cust_creditCard_data[, "Repay_month"] <- format(cust_creditCard_data[,"Repayment_month"], "%B")
+
+cust_creditCard_data %>%
+  group_by(Customer, trans_month ) %>%
+  summarise(month_average = mean(Transaction_amount), .groups = "drop")
+
+
+```
+d. What is the average monthly repayment by customers?
+
+```{r}
+
+cust_creditCard_data %>%
+  group_by(Customer, Repay_month ) %>%
+  summarise(MonthlyRepay_Avg = mean(Repayment_amount), .groups = "drop")
+
+
+
+```
+e. If the monthly rate of interest is 2.9%, what is the profit for the bank for each month? ( Profit is defined as interest earned on monthly profit.
+Monthly Profit = Monthly Repayment - Monthly Spend. Interest is earned only on positive profits and not on negative amount.)
+
+
+```{r}
+
+monthly_spend <- cust_creditCard_data %>%
+  group_by(Customer, trans_month ) %>%
+  summarise(Monthly_spend = sum(Transaction_amount), .groups = "drop")
+
+monthly_repay <- cust_creditCard_data %>%
+  group_by(Customer, Repay_month ) %>%
+  summarise(Monthly_Repay = sum(Repayment_amount), .groups = "drop")
+
+monthly_trans_repay <- merge(x= monthly_spend, y=monthly_repay, by = "Customer")
+
+monthly_trans_repay$monthly_profit<- monthly_trans_repay$Monthly_Repay- monthly_trans_repay$Monthly_spend
+monthly_trans_repay$profit <- round(ifelse(monthly_trans_repay$monthly_profit>0, monthly_trans_repay$monthly_profit*2.9/100, 0),2)
+
+```
+
+f. What are the Top 5 product types?
+
+```{r}
+cust_creditCard_data %>%dplyr::select(Type, Transaction_amount)%>%group_by(Type)%>%summarise(Total_spend = sum(Transaction_amount))%>%arrange(desc(Total_spend))%>%head(5)
+
+```
+
+g. Which city is having maximum spend?
+
+```{r}
+cust_creditCard_data %>%dplyr::select(City, Transaction_amount)%>%group_by(City)%>%summarise(Total_spend = sum(Transaction_amount))%>%arrange(desc(Total_spend))%>%head(1)
+
+```
+h. Which age group is spending more money?
+
+```{r}
+# First, I'm creating a new column named AgeGroup
+
+cust_creditCard_data$Age <- as.numeric(unlist(cust_creditCard_data$Age), rm.na= TRUE)
+
+cust_creditCard_data$AgeGroup <- cut(cust_creditCard_data$Age, 
+                               breaks = c(18, 28, 38, 48, 58, 68, 78, 88, 98),
+                               labels = c("18-28 years", "29-38 years", "39-48 years", "49-58 years", "59-68 years", "69-78 years", "79-88 years", "89-99years"),
+                               right = FALSE)
+
+
+
+cust_creditCard_data %>%dplyr::select(AgeGroup, Transaction_amount)%>%group_by(AgeGroup)%>%summarise(Total_spend = sum(Transaction_amount))%>%arrange(desc(Total_spend))%>%head(1)
+
+```
+i. Who are the top 10 customers in terms of repayment?
+```{r}
+cust_creditCard_data %>%dplyr::select(Customer, Repayment_amount)%>%group_by(Customer)%>%summarise(Total_spend = sum(Repayment_amount))%>%arrange(desc(Total_spend))%>%head(10)
+
+```
+3. Calculate the city wise spend on each product on yearly basis. Also, include a graphical representation for the same. 
+```{r}
+cust_creditCard_data %>%dplyr::select(Product, City,Transaction_amount,Transaction_month)%>%group_by(Year=lubridate::year(Transaction_month), City, Product ) %>%summarise(Yearly_spend = sum(Transaction_amount))
+
+
+```
+4. Create graph for:
+
+a. Monthly comparison of total spend, city wise
+
+```{r}
+
+
+x <- cust_creditCard_data%>% dplyr::select(City, Transaction_amount, trans_month)%>% group_by(trans_month, City)%>%summarise(monthwise_spend = sum(Transaction_amount), .groups ="drop")
+
+require(ggplot2)
+ggplot2::ggplot(data = x)+
+  aes(x= City, y= monthwise_spend, fill = trans_month)+
+  geom_bar(stat = "identity")
+
+
+```
+
+b. Comparison of yearly spend on air tickets.
+
+```{r}
+
+# Let's extract the data only related to Air Tickets
+
+Yearly_Airtic_spend <- cust_creditCard_data%>%dplyr::select(Transaction_amount, trans_year, Type)%>%filter(Type == "AIR TICKET")%>%group_by(trans_year, Type)%>%summarise(Tot_sales = sum(Transaction_amount), .groups ="drop")
+
+ggplot2::ggplot(data = Yearly_Airtic_spend)+
+  aes(x= trans_year, y= Tot_sales, fill = Type)+
+  geom_bar(stat = "identity")
+
+
+```
+
+
+c. Comparison of monthly spend for each product (look for any seasonality that exists in terms of spend)
+
+```{r}
+MonthlySpend_prodwise <- cust_creditCard_data%>%dplyr::select(Transaction_amount, trans_month, Product)%>%group_by(trans_month, Product)%>%summarise(Tot_sales = sum(Transaction_amount), .groups ="drop")
+
+ggplot2::ggplot(data = MonthlySpend_prodwise)+
+  aes(x= Product, y= Tot_sales, fill = trans_month)+
+  geom_bar(stat = "identity")
+
+
+```
+
+5. Write UDF to perform the following analysis:
+
+You need to find top 10 customers for each city in terms of their repayment amount by different products and by different time periods i.e year or month. The User should be able to specify the product (Gold/Silver/Platinum) and time period (yearly or monthly) and the function should automatically take these inputs while identifying the Top 10 customers. *
+
+
+```{r}
+
+
+
+top_10 <- function(Product, TIME_PERIOD){
+  if(TIME_PERIOD == "monthly" & PRODUCT == "Gold"){
+    res<-dplyr::cust_repay_transbyprods[cust_repay_transbyprods$Product== "Gold",]%>%group_by(Customer, City, Product, Repay_month)%>%summarise(Repay_amt = sum(Repayment_amount), .groups = "drop")%>%arrange(desc(Repay_amt))%>%head(10)
+  }
+  else if((TIME_PERIOD == 'Yearly') &  (PRODUCT == 'Gold')){
+   res<-dplyr::cust_repay_transbyprods[cust_repay_transbyprods$Product== "Gold",]%>%group_by(Customer, City, Product, Repay_year)%>%summarise(Repay_amt = sum(Repayment_amount), .groups = "drop")%>%arrange(desc(Repay_amt))%>%head(10)
+  }
+  else if (TIME_PERIOD == "monthly" & PRODUCT == "Silver"){
+    res<-dplyr::cust_repay_transbyprods[cust_repay_transbyprods$Product== "Silver",]%>%group_by(Customer, City, Product, Repay_month)%>%summarise(Repay_amt = sum(Repayment_amount), .groups = "drop")%>%arrange(desc(Repay_amt))%>%head(10)
+  }
+  else if (TIME_PERIOD == "yearly" & PRODUCT == "Silver"){
+    res<-dplyr::cust_repay_transbyprods[cust_repay_transbyprods$Product== "Silver",]%>%group_by(Customer, City, Product, Repay_year)%>%summarise(Repay_amt = sum(Repayment_amount), .groups = "drop")%>%arrange(desc(Repay_amt))%>%head(10)
+  }
+  else if (TIME_PERIOD == "monthly" & PRODUCT == "Platinum"){
+    res<-dplyr::cust_repay_transbyprods[cust_repay_transbyprods$Product== "Platinum",]%>%group_by(Customer, City, Product, Repay_month)%>%summarise(Repay_amt = sum(Repayment_amount), .groups = "drop")%>%arrange(desc(Repay_amt))%>%head(10)
+  }
+  else if (TIME_PERIOD == "yearly" & PRODUCT == "Platinum"){
+    res<-dplyr::cust_repay_transbyprods[cust_repay_transbyprods$Product== "Platinum",]%>%group_by(Customer, City, Product, Repay_year)%>%summarise(Repay_amt = sum(Repayment_amount), .groups = "drop")%>%arrange(desc(Repay_amt))%>%head(10)
+  }
+  return(res)
+}
+
+
+top10_custs_analysis <- top_10(Product == "Gold", TIME_PERIOD== "yearly")
+
+
+#  I've difficulties with this one. 
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
